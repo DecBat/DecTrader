@@ -1,0 +1,2 @@
+# DecTrader
+Trading application
