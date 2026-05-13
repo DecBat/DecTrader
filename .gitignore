@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Local data and logs
+data/
+logs/
+*.parquet
+*.sqlite
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

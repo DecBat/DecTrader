@@ -1,0 +1,26 @@
+# Core data
+pandas>=2.2.0
+numpy>=1.26.0
+pyarrow>=15.0.0           # parquet support
+
+# Market data
+yfinance>=0.2.40
+
+# Broker
+alpaca-py>=0.30.0         # official Alpaca SDK (NOT the deprecated alpaca-trade-api)
+
+# Backtesting
+backtrader>=1.9.78.123
+matplotlib>=3.8.0
+
+# News + sentiment
+requests>=2.31.0
+transformers>=4.40.0      # FinBERT via Hugging Face
+torch>=2.2.0
+
+# Config
+python-dotenv>=1.0.0
+
+# Dev
+pytest>=8.0.0
+jupyter>=1.0.0
