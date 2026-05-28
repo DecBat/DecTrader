@@ -1,5 +1,5 @@
 """
-Standalone screener run: prints today's picks without doing anything else.
+Standalone screener run: prints today's momentum picks with sentiment overlay.
 
 Usage:
     python scripts/run_screener.py
@@ -12,9 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
-from config.settings import MOMENTUM_LOOKBACK_DAYS, TOP_N, UNIVERSE
+from config.settings import MOMENTUM_LOOKBACK_DAYS, SENTIMENT_VETO_NEGATIVE, TOP_N, UNIVERSE
 from src.data_pipeline.fetch_prices import load_universe
 from src.screeners.momentum import MomentumScreener
+from src.sentiment.filter import SentimentFilter
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -33,27 +34,51 @@ def main() -> None:
         log.warning("No picks returned — all stocks filtered out.")
         return
 
-    # Build a DataFrame for display and export
-    rows = [
-        {
-            "rank": i + 1,
-            "ticker": p.ticker,
-            "score": round(p.score, 4),
-            "reason": p.reason,
-            "as_of": date.today().isoformat(),
-        }
-        for i, p in enumerate(picks)
-    ]
+    log.info("Running sentiment filter on %d picks...", len(picks))
+    sentiment_filter = SentimentFilter(veto_threshold=SENTIMENT_VETO_NEGATIVE)
+
+    rows = []
+    for i, pick in enumerate(picks):
+        allowed, sent = sentiment_filter.allow_trade(pick.ticker)
+        rows.append({
+            "rank":      i + 1,
+            "ticker":    pick.ticker,
+            "mom_score": round(pick.score, 4),
+            "P_pos":     round(sent.positive, 3),
+            "P_neg":     round(sent.negative, 3),
+            "P_neu":     round(sent.neutral,  3),
+            "news_n":    sent.n_items,
+            "vetoed":    not allowed,
+            "as_of":     date.today().isoformat(),
+        })
+
     df = pd.DataFrame(rows)
 
-    # Console table
-    print("\n" + "=" * 60)
-    print(f"  Momentum Picks — {date.today()}  (lookback={MOMENTUM_LOOKBACK_DAYS}d, top {TOP_N})")
-    print("=" * 60)
-    print(df[["rank", "ticker", "score", "reason"]].to_string(index=False))
-    print("=" * 60 + "\n")
+    passed  = df[~df["vetoed"]]
+    vetoed  = df[ df["vetoed"]]
 
-    # CSV output
+    W = 72
+    print("\n" + "=" * W)
+    print(f"  Momentum + Sentiment Picks  |  {date.today()}  (lookback={MOMENTUM_LOOKBACK_DAYS}d, top {TOP_N})")
+    print(f"  Sentiment veto threshold: P(negative) > {SENTIMENT_VETO_NEGATIVE}")
+    print("=" * W)
+
+    if not passed.empty:
+        print("\n  APPROVED PICKS")
+        print(
+            passed[["rank", "ticker", "mom_score", "P_pos", "P_neg", "P_neu", "news_n"]]
+            .to_string(index=False)
+        )
+
+    if not vetoed.empty:
+        print("\n  VETOED BY SENTIMENT")
+        print(
+            vetoed[["rank", "ticker", "mom_score", "P_pos", "P_neg", "P_neu", "news_n"]]
+            .to_string(index=False)
+        )
+
+    print("\n" + "=" * W + "\n")
+
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_PATH, index=False)
     log.info("Results written to %s", OUTPUT_PATH)

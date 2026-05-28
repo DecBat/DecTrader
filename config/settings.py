@@ -23,7 +23,8 @@ ALPACA_SECRET_KEY: str = os.getenv("ALPACA_SECRET_KEY", "")
 ALPACA_BASE_URL: str = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
 
 # --- News ---
-NEWS_API_KEY: str = os.getenv("NEWS_API_KEY", "")
+FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
+NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
 
 # --- Trading universe (~20 liquid large-caps) ---
 UNIVERSE: list[str] = [
@@ -54,5 +55,5 @@ SENTIMENT_VETO_NEGATIVE: float = 0.60  # veto trade if P(negative) > this
 # --- Backtest defaults ---
 BACKTEST_START: str = "2020-01-01"
 BACKTEST_END: str = "2024-12-31"
-BACKTEST_INITIAL_CASH: float = 500.0
+BACKTEST_INITIAL_CASH: float = 100_000.0
 BACKTEST_SLIPPAGE_PCT: float = 0.001  # 0.1 % per trade
