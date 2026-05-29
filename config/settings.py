@@ -30,7 +30,7 @@ NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
 # --- LM Studio (local LLM sentiment scorer) ---
 # Set LM_STUDIO_URL in .env to point at whichever machine is running LM Studio
 # Default assumes it is running on the same machine
-LM_STUDIO_URL: str = os.getenv("LM_STUDIO_URL", "http://192.168.1.171:1234")
+LM_STUDIO_URL: str = os.getenv("LM_STUDIO_URL", "http://localhost:1234")
 
 # --- Trading universe ---
 # Loads from data/sp500_tickers.json if present (run scripts/update_universe.py to generate).
