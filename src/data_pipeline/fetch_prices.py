@@ -30,7 +30,13 @@ def fetch_one(ticker: str, start: str, end: str) -> pd.DataFrame:
 
 
 def update_cache(tickers: list[str], start: str = "2020-01-01", end: str | None = None) -> None:
-    """Download each ticker and write to data/prices/<TICKER>.parquet."""
+    """
+    Download and cache OHLCV for each ticker.
+
+    Incremental update: if a parquet file already exists, only fetch
+    new trading days since the last cached date. On first run (no cache),
+    downloads the full history from `start`.
+    """
     import datetime
 
     if end is None:
@@ -38,14 +44,48 @@ def update_cache(tickers: list[str], start: str = "2020-01-01", end: str | None 
 
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+    new_count = 0
+    updated_count = 0
+    skipped_count = 0
+
     for ticker in tickers:
+        path = _CACHE_DIR / f"{ticker}.parquet"
         try:
-            df = fetch_one(ticker, start, end)
-            path = _CACHE_DIR / f"{ticker}.parquet"
-            df.to_parquet(path)
-            log.info("Cached %s  (%d rows) → %s", ticker, len(df), path)
+            if path.exists():
+                existing = pd.read_parquet(path)
+                last_date = existing.index.max()
+                fetch_from = (last_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+
+                if fetch_from >= end:
+                    log.debug("%s already up to date (last: %s)", ticker, last_date.date())
+                    skipped_count += 1
+                    continue
+
+                new_rows = fetch_one(ticker, fetch_from, end)
+                if new_rows.empty:
+                    log.debug("%s no new rows", ticker)
+                    skipped_count += 1
+                    continue
+
+                df = pd.concat([existing, new_rows]).sort_index()
+                df = df[~df.index.duplicated(keep="last")]
+                df.to_parquet(path)
+                log.info("%s +%d new rows (total %d)", ticker, len(new_rows), len(df))
+                updated_count += 1
+
+            else:
+                df = fetch_one(ticker, start, end)
+                df.to_parquet(path)
+                log.info("%s full download (%d rows)", ticker, len(df))
+                new_count += 1
+
         except Exception as exc:
-            log.warning("Failed to fetch %s: %s", ticker, exc)
+            log.warning("Failed to update %s: %s", ticker, exc)
+
+    log.info(
+        "Cache update complete — %d new, %d updated, %d already current",
+        new_count, updated_count, skipped_count,
+    )
 
 
 def load_prices(ticker: str) -> pd.DataFrame:

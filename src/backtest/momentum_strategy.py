@@ -34,6 +34,7 @@ class MomentumStrategy(bt.Strategy):
     params = dict(
         lookback=90,
         top_n=5,
+        buffer=3,               # hold existing positions until they fall outside top N+buffer
         rebalance_interval=5,   # bars between rebalances (5 ≈ weekly)
         trend_filter=True,
         sma_period=200,
@@ -80,22 +81,38 @@ class MomentumStrategy(bt.Strategy):
             if not np.isnan(score) and score > 0:
                 scores[d._name] = score
 
-        top_picks = sorted(scores, key=scores.__getitem__, reverse=True)[: self.p.top_n]
+        ranked = sorted(scores, key=scores.__getitem__, reverse=True)
 
-        # Exit positions no longer in the top picks
+        # buy_zone  — top N: actively buy if not held
+        # hold_zone — top N+buffer: keep if already held, don't buy if not
+        # outside   — sell immediately
+        buy_zone  = set(ranked[: self.p.top_n])
+        hold_zone = set(ranked[: self.p.top_n + self.p.buffer])
+
+        # Sell anything that has fallen outside the hold zone
         for d in self.datas[1:]:
-            if d._name not in top_picks and self.getposition(d).size:
+            if d._name not in hold_zone and self.getposition(d).size:
                 self.order_target_percent(d, 0.0)
 
-        if not top_picks:
+        if not buy_zone:
             return
 
-        # Equal-weight the picks, keeping cash_buffer in cash
-        target_pct = (1.0 - self.p.cash_buffer) / len(top_picks)
-        for ticker in top_picks:
+        # Active set = buy zone + any currently held positions still inside hold zone
+        held_in_buffer = {
+            d._name for d in self.datas[1:]
+            if d._name in hold_zone and self.getposition(d).size
+        }
+        active = buy_zone | held_in_buffer
+
+        # Equal-weight across the full active set
+        target_pct = (1.0 - self.p.cash_buffer) / len(active)
+        for ticker in active:
             self.order_target_percent(self.name_to_data[ticker], target_pct)
 
-        log.debug("%s rebalance → %s", self.data.datetime.date(0), top_picks)
+        log.debug("%s | buy=%s buffer_held=%s",
+                  self.data.datetime.date(0),
+                  sorted(buy_zone),
+                  sorted(held_in_buffer - buy_zone))
 
 
 def _make_feed(df: pd.DataFrame, name: str, fromdate: str, todate: str) -> bt.feeds.PandasData:
@@ -125,6 +142,7 @@ def run_backtest(
     initial_cash: float = 100_000.0,
     lookback: int = 90,
     top_n: int = 5,
+    buffer: int = 3,
     cash_buffer: float = 0.05,
     commission: float = 0.001,
 ) -> dict:
@@ -141,6 +159,7 @@ def run_backtest(
         MomentumStrategy,
         lookback=lookback,
         top_n=top_n,
+        buffer=buffer,
         cash_buffer=cash_buffer,
     )
 

@@ -1,5 +1,5 @@
 """
-Sentiment trade gate — combines news fetcher + FinBERT into a one-way veto.
+Sentiment trade gate — combines news fetcher + LM Studio scorer into a one-way veto.
 
 Design: sentiment can BLOCK a trade but never INITIATE one.
 If a ticker has no recent news, the trade is allowed (benefit of the doubt).
@@ -50,13 +50,14 @@ class SentimentFilter:
 
         if sentiment.negative > self.veto_threshold:
             log.info(
-                "%s: VETOED  P(neg)=%.2f > threshold %.2f",
-                ticker, sentiment.negative, self.veto_threshold,
+                "%s: VETOED  P(neg)=%.2f > threshold %.2f | %s",
+                ticker, sentiment.negative, self.veto_threshold, sentiment.reasoning,
             )
             return False, sentiment
 
         log.info(
-            "%s: allowed  P(neg)=%.2f  P(pos)=%.2f  n=%d",
-            ticker, sentiment.negative, sentiment.positive, sentiment.n_items,
+            "%s: allowed  P(neg)=%.2f  P(pos)=%.2f  n=%d | %s",
+            ticker, sentiment.negative, sentiment.positive,
+            sentiment.n_items, sentiment.reasoning,
         )
         return True, sentiment

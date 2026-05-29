@@ -1,6 +1,7 @@
 """
 Central configuration.
 """
+import json
 import os
 from pathlib import Path
 
@@ -26,19 +27,37 @@ ALPACA_BASE_URL: str = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.ma
 FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
 
-# --- Trading universe (~20 liquid large-caps) ---
-UNIVERSE: list[str] = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",
-    "META", "TSLA", "BRK-B", "JPM", "V",
-    "UNH", "XOM", "JNJ", "PG", "MA",
-    "HD", "AVGO", "MRK", "CVX", "PEP",
-]
+# --- LM Studio (local LLM sentiment scorer) ---
+# Set LM_STUDIO_URL in .env to point at whichever machine is running LM Studio
+# Default assumes it is running on the same machine
+LM_STUDIO_URL: str = os.getenv("LM_STUDIO_URL", "http://192.168.1.171:1234")
+
+# --- Trading universe ---
+# Loads from data/sp500_tickers.json if present (run scripts/update_universe.py to generate).
+# Falls back to a 20-stock large-cap list if the file doesn't exist yet.
+_SP500_PATH = DATA_DIR / "sp500_tickers.json"
+
+def _load_universe() -> list[str]:
+    if _SP500_PATH.exists():
+        with open(_SP500_PATH) as f:
+            tickers = json.load(f)
+        return tickers
+    # Fallback: 20 liquid large-caps
+    return [
+        "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",
+        "META", "TSLA", "BRK-B", "JPM", "V",
+        "UNH", "XOM", "JNJ", "PG", "MA",
+        "HD", "AVGO", "MRK", "CVX", "PEP",
+    ]
+
+UNIVERSE: list[str] = _load_universe()
 
 BENCHMARK: str = "SPY"
 
 # --- Strategy parameters ---
 MOMENTUM_LOOKBACK_DAYS: int = 90   # period over which to rank momentum
 TOP_N: int = 5                      # number of positions to hold
+MOMENTUM_BUFFER: int = 0            # hold existing positions until they fall outside top N+buffer (0 = off, try 3+ with larger universes)
 REBALANCE_FREQUENCY: str = "weekly" # "daily" | "weekly" | "monthly"
 
 # --- Position sizing ---

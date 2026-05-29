@@ -164,7 +164,7 @@ def _print_results(results: dict, spy_df: pd.DataFrame, initial_cash: float, sta
 
 
 def main():
-    log.info("Loading cached prices...")
+    log.info("Loading cached prices for %d tickers...", len(UNIVERSE))
     prices = load_universe(UNIVERSE)
     spy_df = _load_or_fetch(BENCHMARK, BACKTEST_START, BACKTEST_END)
 
@@ -176,6 +176,7 @@ def main():
         initial_cash=BACKTEST_INITIAL_CASH,
         lookback=MOMENTUM_LOOKBACK_DAYS,
         top_n=TOP_N,
+        buffer=0,
         cash_buffer=CASH_BUFFER_PCT,
         commission=BACKTEST_SLIPPAGE_PCT,
     )
