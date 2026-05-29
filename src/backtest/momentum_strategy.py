@@ -18,7 +18,7 @@ SKIP_DAYS = 21  # drop most-recent ~1 month to avoid short-term reversal
 
 def _clenow_score(series: np.ndarray) -> float:
     """Annualized slope * R² on log-price regression. Returns nan if degenerate."""
-    if len(series) < 10 or np.any(series <= 0):
+    if len(series) < 10 or np.any(series <= 0) or np.any(np.isnan(series)):
         return float("nan")
     x = np.arange(len(series))
     y = np.log(series.astype(float))
@@ -118,6 +118,8 @@ class MomentumStrategy(bt.Strategy):
 def _make_feed(df: pd.DataFrame, name: str, fromdate: str, todate: str) -> bt.feeds.PandasData:
     """Convert a parquet DataFrame into a backtrader data feed."""
     df = df.copy()
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
     df.columns = [c.lower() for c in df.columns]   # backtrader expects lowercase
     df.index = pd.to_datetime(df.index)
     df = df.loc[fromdate:todate]
@@ -146,24 +148,42 @@ def run_backtest(
     cash_buffer: float = 0.05,
     commission: float = 0.001,
 ) -> dict:
-    cerebro = bt.Cerebro(runonce=False)
+    cerebro = bt.Cerebro(runonce=True)
     cerebro.broker.setcash(initial_cash)
     cerebro.broker.setcommission(commission=commission)
 
-    # Minimum bars a ticker must have in the full range to be worth adding at all.
-    # Tickers with fewer bars entered very recently and have no signal in any window.
+    # Minimum real (non-NaN) bars a ticker must have in the backtest range.
+    # Tickers below this threshold never accumulate a full scoring window.
     min_bars = 200 + SKIP_DAYS + lookback  # SMA warmup + scoring window
+
+    # Build a trading-day calendar from SPY so every feed shares the same date
+    # index. Pre-IPO rows get NaN; the NaN guard in _clenow_score ensures those
+    # tickers produce no score until they have a full real-data window. This lets
+    # post-2007 IPOs enter the universe naturally without pushing the global start
+    # date forward (the runonce=True sync issue).
+    spy_ts = pd.to_datetime(spy_df.index)
+    trading_calendar = spy_ts[(spy_ts >= pd.Timestamp(start)) & (spy_ts <= pd.Timestamp(end))]
 
     # SPY must be datas[0] — it is the trend-filter reference, not traded
     cerebro.adddata(_make_feed(spy_df, "SPY", start, end))
 
     skipped = []
     for ticker, df in prices.items():
-        bars_in_range = len(df.loc[start:end])
-        if bars_in_range < min_bars:
+        df_aligned = df.copy()
+        df_aligned.index = pd.to_datetime(df_aligned.index)
+        df_aligned = df_aligned.reindex(trading_calendar)
+        # ffill first so real_bars counts only actual price data (pre-IPO stays NaN)
+        df_aligned = df_aligned.ffill()
+        close_col = next((c for c in df_aligned.columns if c.lower() == "close"), None)
+        real_bars = int(df_aligned[close_col].notna().sum()) if close_col else 0
+        if real_bars < min_bars:
             skipped.append(ticker)
             continue
-        cerebro.adddata(_make_feed(df, ticker, start, end))
+        # bfill after the filter: extends first real price back over pre-IPO dates.
+        # A constant pre-IPO price gives a Clenow score of 0, keeping the ticker
+        # out of the buy zone until it has a full real-data window.
+        df_aligned = df_aligned.bfill()
+        cerebro.adddata(_make_feed(df_aligned, ticker, start, end))
 
     if skipped:
         log.info("Skipped %d tickers with insufficient history: %s", len(skipped), skipped)

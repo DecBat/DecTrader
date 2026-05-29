@@ -24,7 +24,10 @@ from src.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-_TIMEOUT = 120   # seconds — 32B model can be slow on first prompt
+_TIMEOUT       = 300  # seconds — 32B model on RAM can take 2-3 min TTFT; 5 min is safe
+_MAX_HEADLINES = 10   # cap articles per request; top 10 carry nearly all the signal
+_MAX_CHARS     = 300  # truncate each headline+summary — headline alone is ~80 chars
+_MAX_TOKENS    = 300  # JSON is ~30 tokens; 300 leaves ~270 tokens for reasoning
 
 _SYSTEM_PROMPT = """You are a financial sentiment analyst. Your job is to analyze \
 news headlines and summaries about publicly traded companies and assess the likely \
@@ -101,8 +104,14 @@ def score_texts(texts: list[str]) -> SentimentScore:
     if not texts:
         return SentimentScore(positive=0.0, negative=0.0, neutral=1.0, n_items=0)
 
-    headline_block = "\n".join(f"- {t}" for t in texts)
-    user_message   = f"Analyze the sentiment of these {len(texts)} financial headlines:\n\n{headline_block}"
+    # Clip to most recent N articles and truncate each to stay within context window.
+    # 15 × 300 chars ~ 1 100 tokens + system prompt ~ well within 4 096.
+    clipped = [t[:_MAX_CHARS] for t in texts[:_MAX_HEADLINES]]
+    if len(texts) > _MAX_HEADLINES:
+        log.debug("Trimmed %d articles to %d for context window", len(texts), _MAX_HEADLINES)
+
+    headline_block = "\n".join(f"- {t}" for t in clipped)
+    user_message   = f"Analyze the sentiment of these {len(clipped)} financial headlines:\n\n{headline_block}"
 
     try:
         resp = requests.post(
@@ -114,6 +123,7 @@ def score_texts(texts: list[str]) -> SentimentScore:
                     {"role": "user",   "content": user_message},
                 ],
                 "temperature": 0.1,
+                "max_tokens":  _MAX_TOKENS,
             },
             timeout=_TIMEOUT,
         )
@@ -152,6 +162,6 @@ def score_texts(texts: list[str]) -> SentimentScore:
         positive=round(pos, 3),
         negative=round(neg, 3),
         neutral =round(neu, 3),
-        n_items =len(texts),
+        n_items =len(texts),   # original fetch count, not the clipped count
         reasoning=reasoning,
     )
