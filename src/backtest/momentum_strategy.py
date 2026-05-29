@@ -146,14 +146,28 @@ def run_backtest(
     cash_buffer: float = 0.05,
     commission: float = 0.001,
 ) -> dict:
-    cerebro = bt.Cerebro()
+    cerebro = bt.Cerebro(runonce=False)
     cerebro.broker.setcash(initial_cash)
     cerebro.broker.setcommission(commission=commission)
 
+    # Minimum bars a ticker must have in the full range to be worth adding at all.
+    # Tickers with fewer bars entered very recently and have no signal in any window.
+    min_bars = 200 + SKIP_DAYS + lookback  # SMA warmup + scoring window
+
     # SPY must be datas[0] — it is the trend-filter reference, not traded
     cerebro.adddata(_make_feed(spy_df, "SPY", start, end))
+
+    skipped = []
     for ticker, df in prices.items():
+        bars_in_range = len(df.loc[start:end])
+        if bars_in_range < min_bars:
+            skipped.append(ticker)
+            continue
         cerebro.adddata(_make_feed(df, ticker, start, end))
+
+    if skipped:
+        log.info("Skipped %d tickers with insufficient history: %s", len(skipped), skipped)
+    log.info("Backtest universe: %d tickers", len(prices) - len(skipped))
 
     cerebro.addstrategy(
         MomentumStrategy,

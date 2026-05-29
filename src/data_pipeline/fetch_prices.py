@@ -40,7 +40,8 @@ def update_cache(tickers: list[str], start: str = "2020-01-01", end: str | None 
     import datetime
 
     if end is None:
-        end = datetime.date.today().isoformat()
+        # Use yesterday — today's data is rarely finalized before market close
+        end = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
 
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -53,24 +54,38 @@ def update_cache(tickers: list[str], start: str = "2020-01-01", end: str | None 
         try:
             if path.exists():
                 existing = pd.read_parquet(path)
-                last_date = existing.index.max()
-                fetch_from = (last_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+                first_cached = existing.index.min()
+                last_cached  = existing.index.max()
 
-                if fetch_from >= end:
-                    log.debug("%s already up to date (last: %s)", ticker, last_date.date())
+                needs_backfill = pd.Timestamp(start) < first_cached
+                needs_forward  = pd.Timestamp(end)   > last_cached
+
+                if not needs_backfill and not needs_forward:
+                    log.debug("%s already up to date (%s to %s)",
+                              ticker, first_cached.date(), last_cached.date())
                     skipped_count += 1
                     continue
 
-                new_rows = fetch_one(ticker, fetch_from, end)
-                if new_rows.empty:
-                    log.debug("%s no new rows", ticker)
-                    skipped_count += 1
-                    continue
+                frames = [existing]
 
-                df = pd.concat([existing, new_rows]).sort_index()
+                if needs_backfill:
+                    backfill_end = (first_cached - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+                    log.info("%s backfilling %s to %s", ticker, start, backfill_end)
+                    older = fetch_one(ticker, start, backfill_end)
+                    if not older.empty:
+                        frames.insert(0, older)
+
+                if needs_forward:
+                    forward_start = (last_cached + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+                    newer = fetch_one(ticker, forward_start, end)
+                    if not newer.empty:
+                        frames.append(newer)
+
+                df = pd.concat(frames).sort_index()
                 df = df[~df.index.duplicated(keep="last")]
                 df.to_parquet(path)
-                log.info("%s +%d new rows (total %d)", ticker, len(new_rows), len(df))
+                log.info("%s updated: %d rows (%s to %s)",
+                         ticker, len(df), df.index.min().date(), df.index.max().date())
                 updated_count += 1
 
             else:
