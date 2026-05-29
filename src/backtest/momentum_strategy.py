@@ -118,6 +118,8 @@ class MomentumStrategy(bt.Strategy):
 def _make_feed(df: pd.DataFrame, name: str, fromdate: str, todate: str) -> bt.feeds.PandasData:
     """Convert a parquet DataFrame into a backtrader data feed."""
     df = df.copy()
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
     df.columns = [c.lower() for c in df.columns]   # backtrader expects lowercase
     df.index = pd.to_datetime(df.index)
     df = df.loc[fromdate:todate]
@@ -170,11 +172,17 @@ def run_backtest(
         df_aligned = df.copy()
         df_aligned.index = pd.to_datetime(df_aligned.index)
         df_aligned = df_aligned.reindex(trading_calendar)
+        # ffill first so real_bars counts only actual price data (pre-IPO stays NaN)
+        df_aligned = df_aligned.ffill()
         close_col = next((c for c in df_aligned.columns if c.lower() == "close"), None)
         real_bars = int(df_aligned[close_col].notna().sum()) if close_col else 0
         if real_bars < min_bars:
             skipped.append(ticker)
             continue
+        # bfill after the filter: extends first real price back over pre-IPO dates.
+        # A constant pre-IPO price gives a Clenow score of 0, keeping the ticker
+        # out of the buy zone until it has a full real-data window.
+        df_aligned = df_aligned.bfill()
         cerebro.adddata(_make_feed(df_aligned, ticker, start, end))
 
     if skipped:
