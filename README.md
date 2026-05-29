@@ -1,10 +1,10 @@
-# AI Trading Starter
+# AI Trading
 
 Paper-trading skeleton that wires together four layers:
 
 ```
 [Data Pipeline] -> [Screener] -> [Sentiment Filter] -> [Paper Execution]
-   yfinance         pandas         FinBERT/news          Alpaca paper API
+   yfinance         pandas         Local LLM/News       Alpaca paper API
 ```
 
 Everything runs against **Alpaca paper trading**.
