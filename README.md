@@ -7,7 +7,7 @@ Paper-trading skeleton that wires together four layers:
    yfinance         pandas         FinBERT/news          Alpaca paper API
 ```
 
-Everything runs against **Alpaca paper trading**. No real money.
+Everything runs against **Alpaca paper trading**.
 
 ## Setup
 
@@ -50,23 +50,6 @@ ai-trading-starter/
 ├── requirements.txt
 └── README.md
 ```
-
-## Suggested build order
-
-Build one piece at a time. Each step should work end-to-end before you move on.
-
-1. **Verify Alpaca connection** — fill in `scripts/check_alpaca_connection.py`
-2. **Build the data pipeline** — `src/data_pipeline/fetch_prices.py` + `scripts/fetch_data.py`
-3. **Write one screener** — `src/screeners/momentum.py` + `scripts/run_screener.py`
-4. **Backtest it** — `src/backtest/momentum_strategy.py` + `scripts/run_backtest.py`
-5. **Add sentiment filter** — `src/sentiment/news_fetcher.py` + `finbert_scorer.py` + `filter.py`
-6. **Wire up paper execution** — `src/execution/alpaca_trader.py`
-7. **Tie it together** — `scripts/run_daily.py`
-
-## What's NOT here (intentionally)
-
-- **No live trading.** Paper mode should be enforced via a flag in `config/settings.py`. Flipping to live should require deliberate code changes.
-- **No magic AI.** FinBERT is a sentiment classifier used as a *filter* on top of a quantitative signal, not as a primary signal.
 
 ## Reminders
 
