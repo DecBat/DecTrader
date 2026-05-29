@@ -15,11 +15,12 @@ matplotlib>=3.8.0
 
 # News + sentiment
 requests>=2.31.0
-transformers>=4.40.0      # FinBERT via Hugging Face
-torch>=2.2.0
 
 # Config
 python-dotenv>=1.0.0
+
+# HTML parsing (required by update_universe.py -> pandas.read_html)
+lxml>=5.0.0
 
 # Dev
 pytest>=8.0.0
