@@ -57,6 +57,8 @@ BENCHMARK: str = "SPY"
 # --- Strategy parameters ---
 MOMENTUM_LOOKBACK_DAYS: int = 90   # period over which to rank momentum
 TOP_N: int = 5                      # number of positions to hold
+TOP_N_INSIDER: int = 3              # insider screener picks (added to momentum pool)
+INSIDER_LOOKBACK_DAYS: int = 60    # days of Form 4 history to scan
 MOMENTUM_BUFFER: int = 0            # hold existing positions until they fall outside top N+buffer (0 = off, try 3+ with larger universes)
 REBALANCE_FREQUENCY: str = "weekly" # "daily" | "weekly" | "monthly"
 
