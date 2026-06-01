@@ -169,6 +169,12 @@ DecTrader/
 
 ---
 
+## AI Disclosure
+
+This project was built with the assistance of [Claude](https://claude.ai) (Anthropic). AI was used in development for architecture design, code generation, debugging, and documentation. All code has been reviewed, tested, and is operated by a human. Trading decisions are made autonomously by the system based on rules defined by the developer — no AI is involved at runtime.
+
+---
+
 ## References
 
 - [Teddy Koker — Momentum strategy](https://teddykoker.com/2019/05/momentum-strategy-from-stocks-on-the-move-in-python/)
