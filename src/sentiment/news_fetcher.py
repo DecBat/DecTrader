@@ -37,7 +37,7 @@ def fetch_news(ticker: str, lookback_days: int = 7) -> list[dict]:
                 "to": end.isoformat(),
                 "token": FINNHUB_API_KEY,
             },
-            timeout=10,
+            timeout=20,
         )
         resp.raise_for_status()
     except requests.RequestException as exc:
