@@ -11,6 +11,7 @@ Usage:
     python scripts/run_daily.py
 """
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -173,6 +174,9 @@ def main() -> None:
         len(insider_picks),
         len({p.ticker for p in momentum_picks} & {p.ticker for p in insider_picks}),
     )
+
+    # Brief pause so Finnhub rate-limit window resets after the insider scan
+    time.sleep(15)
 
     # --- 7. Sentiment filter (LM Studio) ---
     log.info("Running sentiment filter on %d picks...", len(picks))
