@@ -14,22 +14,25 @@ For each ticker:
   cluster_multiplier = 1.5 if 2+ unique insiders bought in any 30-day window
 
 Recency weights:
-  0–7 days   : 1.0
-  8–30 days  : 0.8
-  31–60 days : 0.5
+  0-7 days   : 1.0
+  8-30 days  : 0.8
+  31-60 days : 0.5
 
 Only open-market purchases (transactionCode="P") count toward the score.
 Sales are ignored — insiders sell for too many non-predictive reasons.
 
-Rate limiting
--------------
-Finnhub free tier allows 60 requests/minute. With ~500 universe tickers this
-scan takes ~8–9 minutes. Progress is logged every 50 tickers so you can see
-it moving.
+Parallelisation
+---------------
+SEC EDGAR requests are I/O-bound. We use a ThreadPoolExecutor with
+_MAX_WORKERS concurrent threads. Each thread rate-limits its own requests
+at _REQUEST_INTERVAL seconds, keeping total throughput well under SEC's
+10 req/sec ceiling. 10 workers × (1 / ~2s per request) = ~5 req/sec.
+Expected runtime: ~7 minutes for 500 tickers.
 """
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
 import pandas as pd
@@ -42,16 +45,16 @@ log = get_logger(__name__)
 
 # --- Scoring constants ---
 _RECENCY_WEIGHTS: list[tuple[int, float]] = [
-    (7,  1.0),   # purchased in last week    → full weight
-    (30, 0.8),   # purchased in last month   → 80%
-    (60, 0.5),   # purchased in last 2 months → 50%
+    (7,  1.0),   # purchased in last week     -> full weight
+    (30, 0.8),   # purchased in last month    -> 80%
+    (60, 0.5),   # purchased in last 2 months -> 50%
 ]
-_CLUSTER_DAYS       = 30    # window to detect cluster buys
-_CLUSTER_MIN        = 2     # unique insiders needed for cluster
+_CLUSTER_DAYS       = 30
+_CLUSTER_MIN        = 2
 _CLUSTER_MULTIPLIER = 1.5
-_MIN_SCORE          = 50_000  # minimum weighted buy value to appear as a pick
-_REQUEST_INTERVAL   = 1.1     # seconds between Finnhub calls (safe under 60 req/min)
-_LOG_EVERY          = 50      # log progress every N tickers
+_MIN_SCORE          = 50_000   # minimum weighted buy value to appear as a pick
+_MAX_WORKERS        = 10       # concurrent EDGAR threads
+_LOG_EVERY          = 50       # log progress every N completed tickers
 
 
 def _recency_weight(txn_date: date, today: date) -> float:
@@ -59,7 +62,7 @@ def _recency_weight(txn_date: date, today: date) -> float:
     for days, weight in _RECENCY_WEIGHTS:
         if age <= days:
             return weight
-    return 0.0  # older than max lookback — ignore
+    return 0.0
 
 
 def _has_cluster(buys: list[dict]) -> bool:
@@ -80,17 +83,17 @@ def _has_cluster(buys: list[dict]) -> bool:
     return False
 
 
-def _score_ticker(ticker: str, days: int) -> tuple[float, str]:
+def _score_ticker(ticker: str, days: int) -> tuple[str, float, str]:
     """
-    Return (score, reason) for *ticker*.
-    Score is 0.0 if there are no qualifying purchases.
+    Fetch and score insider activity for one ticker.
+    Returns (ticker, score, reason). Score is 0.0 if no qualifying purchases.
     """
     today        = date.today()
     transactions = fetch_insider_transactions(ticker, days)
     buys         = [t for t in transactions if t.get("transactionCode") == "P"]
 
     if not buys:
-        return 0.0, ""
+        return ticker, 0.0, ""
 
     weighted_total = 0.0
     n_buyers: set[str] = set()
@@ -111,7 +114,7 @@ def _score_ticker(ticker: str, days: int) -> tuple[float, str]:
         n_buyers.add(t.get("name", "unknown"))
 
     if weighted_total < _MIN_SCORE:
-        return 0.0, ""
+        return ticker, 0.0, ""
 
     cluster = _has_cluster(buys)
     if cluster:
@@ -121,7 +124,7 @@ def _score_ticker(ticker: str, days: int) -> tuple[float, str]:
         f"insider_buy=${weighted_total:,.0f}  buyers={len(n_buyers)}"
         + ("  CLUSTER" if cluster else "")
     )
-    return round(weighted_total, 2), reason
+    return ticker, round(weighted_total, 2), reason
 
 
 class InsiderScreener(BaseScreener):
@@ -139,24 +142,35 @@ class InsiderScreener(BaseScreener):
 
     def screen(self, prices: dict[str, pd.DataFrame]) -> list[ScreenerPick]:
         tickers = list(prices.keys())
+        total   = len(tickers)
         scores: dict[str, tuple[float, str]] = {}
-        total = len(tickers)
 
-        log.info("Insider scan: %d tickers  lookback=%dd  (~%.0f min)",
-                 total, self.days, total * _REQUEST_INTERVAL / 60)
+        est_minutes = (total * 1.5) / _MAX_WORKERS / 60
+        log.info(
+            "Insider scan: %d tickers  lookback=%dd  workers=%d  (~%.0f min)",
+            total, self.days, _MAX_WORKERS, est_minutes,
+        )
 
-        for i, ticker in enumerate(tickers):
-            score, reason = _score_ticker(ticker, self.days)
-            if score >= _MIN_SCORE:
-                scores[ticker] = (score, reason)
+        completed = 0
+        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
+            futures = {
+                pool.submit(_score_ticker, ticker, self.days): ticker
+                for ticker in tickers
+            }
+            for future in as_completed(futures):
+                try:
+                    ticker, score, reason = future.result()
+                    if score >= _MIN_SCORE:
+                        scores[ticker] = (score, reason)
+                except Exception as exc:
+                    log.warning("Insider score error for %s: %s", futures[future], exc)
 
-            if (i + 1) % _LOG_EVERY == 0 or (i + 1) == total:
-                log.info("Insider scan progress: %d/%d  (%d candidates so far)",
-                         i + 1, total, len(scores))
-
-            # Rate limit — stay comfortably under 60 req/min
-            if i < total - 1:
-                time.sleep(_REQUEST_INTERVAL)
+                completed += 1
+                if completed % _LOG_EVERY == 0 or completed == total:
+                    log.info(
+                        "Insider scan progress: %d/%d  (%d candidates so far)",
+                        completed, total, len(scores),
+                    )
 
         ranked = sorted(scores, key=lambda t: scores[t][0], reverse=True)[: self.top_n]
         picks  = [
