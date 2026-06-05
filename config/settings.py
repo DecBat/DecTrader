@@ -27,6 +27,14 @@ ALPACA_BASE_URL: str = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.ma
 FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
 
+# --- SEC EDGAR (insider transactions — no API key needed) ---
+# SEC requires a descriptive User-Agent with contact info. Set in .env or
+# update the default below. Format: "AppName/version (description; email)"
+SEC_USER_AGENT: str = os.getenv(
+    "SEC_USER_AGENT",
+    "DecTrader/1.0 (paper-trading-bot; your-email@example.com)",
+)
+
 # --- LM Studio (local LLM sentiment scorer) ---
 # Set LM_STUDIO_URL in .env to point at whichever machine is running LM Studio
 # Default assumes it is running on the same machine
