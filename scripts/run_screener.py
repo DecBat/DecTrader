@@ -41,15 +41,16 @@ def main() -> None:
     for i, pick in enumerate(picks):
         allowed, sent = sentiment_filter.allow_trade(pick.ticker)
         rows.append({
-            "rank":      i + 1,
-            "ticker":    pick.ticker,
-            "mom_score": round(pick.score, 4),
-            "P_pos":     round(sent.positive, 3),
-            "P_neg":     round(sent.negative, 3),
-            "P_neu":     round(sent.neutral,  3),
-            "news_n":    sent.n_items,
-            "vetoed":    not allowed,
-            "as_of":     date.today().isoformat(),
+            "rank":         i + 1,
+            "ticker":       pick.ticker,
+            "mom_score":    round(pick.score, 4),
+            "P_pos":        round(sent.positive, 3),
+            "P_neg":        round(sent.negative, 3),
+            "P_neu":        round(sent.neutral,  3),
+            "news_n":       sent.n_items,
+            "scorer_error": sent.error,
+            "vetoed":       not allowed,
+            "as_of":        date.today().isoformat(),
         })
 
     df = pd.DataFrame(rows)

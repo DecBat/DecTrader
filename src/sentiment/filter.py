@@ -39,19 +39,36 @@ class SentimentFilter:
     def allow_trade(self, ticker: str) -> tuple[bool, SentimentScore]:
         """
         Returns (allowed, sentiment).
-        allowed=False means sentiment is strongly negative — veto the trade.
-        allowed=True  when no news exists or negativity is below threshold.
+        allowed=False when: scorer errored, negativity exceeds threshold, or
+                           negative probability beats positive with meaningful conviction.
+        allowed=True  when no news exists or negativity is clearly below thresholds.
         """
         sentiment = self.score(ticker)
+
+        if sentiment.error:
+            log.warning(
+                "%s: BLOCKED — sentiment scorer failed (%s). Fix LM Studio before trading.",
+                ticker, sentiment.reasoning,
+            )
+            return False, sentiment
 
         if sentiment.n_items == 0:
             log.info("%s: no recent news — trade allowed by default", ticker)
             return True, sentiment
 
+        # Hard threshold: P(neg) exceeds absolute ceiling
         if sentiment.negative > self.veto_threshold:
             log.info(
                 "%s: VETOED  P(neg)=%.2f > threshold %.2f | %s",
                 ticker, sentiment.negative, self.veto_threshold, sentiment.reasoning,
+            )
+            return False, sentiment
+
+        # Comparative veto: negative leads AND has meaningful conviction (catches ~50% neg cases)
+        if sentiment.negative > sentiment.positive and sentiment.negative > 0.35:
+            log.info(
+                "%s: VETOED  P(neg)=%.2f > P(pos)=%.2f with conviction > 0.35 | %s",
+                ticker, sentiment.negative, sentiment.positive, sentiment.reasoning,
             )
             return False, sentiment
 

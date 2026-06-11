@@ -2,7 +2,7 @@
 Full daily pipeline: data refresh -> screener -> sentiment filter -> paper orders.
 
 Run this each morning before market open (e.g. 8:00 AM ET via Task Scheduler).
-LM Studio must be running for sentiment to work — falls back to neutral if offline.
+LM Studio must be running for sentiment to work — trades are BLOCKED if it is offline.
 
 Usage:
     python scripts/run_daily.py

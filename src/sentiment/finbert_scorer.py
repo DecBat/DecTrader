@@ -59,7 +59,8 @@ class SentimentScore:
     negative:  float
     neutral:   float
     n_items:   int
-    reasoning: str = field(default="")
+    reasoning: str  = field(default="")
+    error:     bool = field(default=False)  # True when scorer failed — do NOT treat as neutral
 
     def __str__(self) -> str:
         return (
@@ -130,17 +131,17 @@ def score_texts(texts: list[str]) -> SentimentScore:
         resp.raise_for_status()
 
     except requests.ConnectionError:
-        log.warning("LM Studio unreachable at %s — defaulting to neutral", LM_STUDIO_URL)
+        log.warning("LM Studio unreachable at %s — sentiment check FAILED (trade will be blocked)", LM_STUDIO_URL)
         return SentimentScore(positive=0.0, negative=0.0, neutral=1.0, n_items=len(texts),
-                              reasoning="LM Studio unreachable")
+                              reasoning="LM Studio unreachable", error=True)
     except requests.Timeout:
-        log.warning("LM Studio timed out after %ds — defaulting to neutral", _TIMEOUT)
+        log.warning("LM Studio timed out after %ds — sentiment check FAILED (trade will be blocked)", _TIMEOUT)
         return SentimentScore(positive=0.0, negative=0.0, neutral=1.0, n_items=len(texts),
-                              reasoning="LM Studio timed out")
+                              reasoning="LM Studio timed out", error=True)
     except requests.RequestException as exc:
-        log.warning("LM Studio request failed: %s — defaulting to neutral", exc)
+        log.warning("LM Studio request failed: %s — sentiment check FAILED (trade will be blocked)", exc)
         return SentimentScore(positive=0.0, negative=0.0, neutral=1.0, n_items=len(texts),
-                              reasoning=str(exc))
+                              reasoning=str(exc), error=True)
 
     content = resp.json()["choices"][0]["message"]["content"]
     log.debug("LM Studio raw response: %s", content)
@@ -148,9 +149,9 @@ def score_texts(texts: list[str]) -> SentimentScore:
     try:
         data = _parse_json(content)
     except (json.JSONDecodeError, ValueError) as exc:
-        log.warning("Could not parse LM Studio response as JSON: %s", exc)
+        log.warning("Could not parse LM Studio response as JSON: %s — sentiment check FAILED (trade will be blocked)", exc)
         return SentimentScore(positive=0.0, negative=0.0, neutral=1.0, n_items=len(texts),
-                              reasoning="JSON parse error")
+                              reasoning="JSON parse error", error=True)
 
     pos, neg, neu = _normalize(data)
     reasoning     = data.get("reasoning", "")
