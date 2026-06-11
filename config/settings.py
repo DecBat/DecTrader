@@ -27,6 +27,14 @@ ALPACA_BASE_URL: str = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.ma
 FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
 NEWSAPI_KEY: str = os.getenv("NEWSAPI_KEY", "")
 
+# --- SEC EDGAR (insider transactions — no API key needed) ---
+# SEC requires a descriptive User-Agent with contact info. Set in .env or
+# update the default below. Format: "AppName/version (description; email)"
+SEC_USER_AGENT: str = os.getenv(
+    "SEC_USER_AGENT",
+    "DecTrader/1.0 (paper-trading-bot; your-email@example.com)",
+)
+
 # --- LM Studio (local LLM sentiment scorer) ---
 # Set LM_STUDIO_URL in .env to point at whichever machine is running LM Studio
 # Default assumes it is running on the same machine
@@ -57,6 +65,8 @@ BENCHMARK: str = "SPY"
 # --- Strategy parameters ---
 MOMENTUM_LOOKBACK_DAYS: int = 90   # period over which to rank momentum
 TOP_N: int = 5                      # number of positions to hold
+TOP_N_INSIDER: int = 3              # insider screener picks (added to momentum pool)
+INSIDER_LOOKBACK_DAYS: int = 60    # days of Form 4 history to scan
 MOMENTUM_BUFFER: int = 0            # hold existing positions until they fall outside top N+buffer (0 = off, try 3+ with larger universes)
 REBALANCE_FREQUENCY: str = "weekly" # "daily" | "weekly" | "monthly"
 

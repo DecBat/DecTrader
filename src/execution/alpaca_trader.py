@@ -21,6 +21,17 @@ log = get_logger(__name__)
 
 _LIVE_URL = "https://api.alpaca.markets"
 
+# Alpaca uses dot notation; yfinance/Finnhub use hyphens for the same tickers
+_TICKER_MAP = {
+    "BRK-B": "BRK.B",
+    "BRK-A": "BRK.A",
+    "BF-B":  "BF.B",
+    "BF-A":  "BF.A",
+}
+
+def _alpaca_symbol(ticker: str) -> str:
+    return _TICKER_MAP.get(ticker, ticker)
+
 
 class AlpacaTrader:
     def __init__(self):
@@ -123,8 +134,9 @@ class AlpacaTrader:
     def _close_position(self, symbol: str, market_value: float) -> None:
         if not self._within_circuit_breaker(symbol):
             return
+        alpaca_sym = _alpaca_symbol(symbol)
         try:
-            self._client.close_position(symbol)
+            self._client.close_position(alpaca_sym)
             self._orders_today += 1
             log.info("EXIT  %-6s  market_value=$%.2f", symbol, market_value)
         except Exception as exc:
@@ -133,10 +145,11 @@ class AlpacaTrader:
     def _submit_notional(self, symbol: str, side: OrderSide, notional: float) -> None:
         if not self._within_circuit_breaker(symbol):
             return
+        alpaca_sym = _alpaca_symbol(symbol)
         try:
             order = self._client.submit_order(
                 MarketOrderRequest(
-                    symbol=symbol,
+                    symbol=alpaca_sym,
                     notional=round(notional, 2),
                     side=side,
                     time_in_force=TimeInForce.DAY,
